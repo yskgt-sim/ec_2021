@@ -318,5 +318,5 @@ if __name__ == "__main__":
     
     # パレートフロントを出力
     df_hof = decode_hof(paretof)
-    df_hof.drop_duplicates(keep='first', subset=['query', 'payment'])
+    df_hof.drop_duplicates(keep='first', subset=['query', 'payment'], inplace=True)
     df_hof.to_csv(OUT_DIR + EID + '.csv')

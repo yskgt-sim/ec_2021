@@ -318,5 +318,5 @@ if __name__ == "__main__":
     
     # 最良個体の出力
     df_hof_final = decode_hof(hof)
-    df_hof_final.drop_duplicates(keep='first', subset=['query', 'payment'])
+    df_hof_final.drop_duplicates(keep='first', subset=['query', 'payment'], inplace=True)
     df_hof_final.to_csv(OUT_DIR + EID + '_p.csv')
