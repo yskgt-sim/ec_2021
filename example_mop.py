@@ -1,5 +1,5 @@
 ### ECコンペ2021 多目的部門の実行サンプルコード(example_mop.py)
-# 作成者： 後藤裕介(芝浦工業大学) y-goto@shibaura-it.ac.jp
+# 作成者は後藤裕介(芝浦工業大学)です．お問い合わせは y-goto@shibaura-it.ac.jp までお願いします．
 # 
 # ■■■ 概要 ■■■
 # NSGA-IIで近似解を導出するpythonプログラムです．
@@ -15,7 +15,7 @@
 # 確認されてから設定してください．
 # 
 # ■■■ 動作環境 ■■■
-# ライブラリのバージョンに依存することはなさそうですが，以下の環境では動作しています．
+# 以下の環境で動作確認をしています．
 # 外部のライブラリとしてはDEAPを使っています．
 # https://github.com/deap/deap
 # 
@@ -25,6 +25,7 @@
 # - numpy: 1.20.2
 # - pandas: 1.2.4
 # - python: 3.9.2
+# subprocessの処理でエラーが出る際には，pythonのバージョンを3.7以上に上げることを試してみてください．
 import math
 import numpy as np
 import pandas as pd
@@ -34,7 +35,6 @@ from deap import base
 from deap import creator
 from deap import tools
 from deap.benchmarks.tools import hypervolume
-from tqdm import tqdm
 
 ### 実行用の変数の設定
 # N_PROC: 子プロセスの展開数．
@@ -42,11 +42,13 @@ from tqdm import tqdm
 # EID: パレートフロントのcsvの拡張子の前の部分． "p001" とすると，p001.csv として保存します．
 # CITY: 実行する都市名． naha：沖縄県那覇市，hakodate: 北海道函館市
 # SEEDS: 実行時の乱数シードのリスト．""で囲って定義してください．
-N_PROC = 10
+# OS: 実行ファイルの振り分け用のフラグ． 1: Widows, 2: Linux, MacOS
+N_PROC = 5
 OUT_DIR = "./"
 EID = "p001"
 CITY = "naha"
 SEEDS = "[123,42,256]"
+OS = 2
 
 ### GAの設定
 # SEED：GAの遺伝的操作の際の乱数シード．シミュレーションにわたす乱数シードとは異なる点に注意．
@@ -123,15 +125,16 @@ def ret_fitness(p):
     #   解の金額面の余裕（マイナスの場合には制約を満たしていない）
     
     a, err = p.communicate(timeout=1_000)
-    # 正常に子プロセスが終了しないときは，目的関数値を1にしておく -> 次は選ばれないように
+    # 正常に子プロセスが終了しないときは，目的関数値を1_000にしておく -> 次は選ばれないように
     if p.returncode != 0:
         print("sim failed %d %s %s" % (p.returncode, a, err))
-        return 1.0, [1.0], 1.0, [1.0], False, [0]
+        return 1_000, [1_000], 1_000, [1_000], False, [0]
     else:
-        # print(a)
         a_split = eval(a)
-        # 最小化問題へ変換して出力
-        return float(a_split[0]) * -1.0, a_split[1], float(a_split[2]) * -1.0, a_split[3], a_split[4], a_split[5]
+        if a_split[0] == None or a_split[2] == None:
+            return 1_000, a_split[1], 1_000, a_split[3], a_split[4], a_split[5]
+        else:
+            return float(a_split[0]), a_split[1], float(a_split[2]), a_split[3], a_split[4], a_split[5]
 
 def evaluation(pop):
     ### 個体の評価を行う関数
@@ -169,45 +172,32 @@ def evaluation(pop):
         for i in ind_list:
             ind = pop[i]
             q, pay = gene2pay(ind)
-            # print(pay)
-            cmd = """python syn_pop.py \"""" + str(q) + """\" """ + str(pay) + """ """ + "[1,2]" + """ """ + str(CITY) + """ """ + str(SEEDS)
+            cmd = ''
+            if OS == 1:
+                cmd = """syn_pop.exe \"""" + str(q) + """\" """ + str(pay) + """ """ + "[1,2]" + """ """ + str(CITY) + """ """ + str(SEEDS)
+            else:
+                cmd = """./syn_pop \"""" + str(q) + """\" """ + str(pay) + """ """ + "[1,2]" + """ """ + str(CITY) + """ """ + str(SEEDS)
             job_list.append(cmd)
         procs = [subprocess.Popen(job, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for job in job_list]
 
         for i in range(len(ind_list)):
             # avg: 目的関数値
             # vals: 各条件での実行値のlist(valsを平均したものがavg)
-            # judge: 解が制約条件（条件の優先関係）を満たしているか？
+            # feasible: 解が制約条件（条件の優先関係）を満たしているか？
             # slacks: 金額面の制約の違反量（正の場合にはまだ余裕がある．負の場合には違反している量） 
             # vals, slacksはここでは使っていませんが，アルゴリズムやパラメータの検討時に参考になると思われます
-            avg_1, vals_1, avg_2, vals_2, judge, slacks = ret_fitness(procs[i])
+            avg_1, vals_1, avg_2, vals_2, feasible, slacks = ret_fitness(procs[i])
             f1_list = f1_list + [avg_1]
             f2_list = f2_list + [avg_2]
-            is_feasible_list = is_feasible_list + [judge]
+            is_feasible_list = is_feasible_list + [feasible]
 
     for ind, f1, f2, j in zip(pop, f1_list, f2_list, is_feasible_list):
         # 目的関数値を各個体に割り当てていく．
-        # このときに，解が金額の制約以外で，実行可能でないときには，ペナルティとして，目的関数値を1.0とする
+        # このときに，解が金額の制約以外で，実行可能でないときには，ペナルティとして，目的関数値を1_000とする
         if j == False:
-            ind.fitness.values = 1.0, 1.0,
+            ind.fitness.values = 1_000, 1_000,
         else:
-            # 解が金額による制約を満たさないときもペナルティとして，目的関数値を1とする
-            # 解が金額による制約を満たさないときは，仮に0がアサインされているため，
-            # 0.0がどうか判定して，1.0を割当てる
-            # a: 条件分岐用の変数
-            a = 0
-            if math.isclose(f1, 0.0):
-                a += 1
-            if math.isclose(f2, 0.0):
-                a += 2
-            if a == 1:
-                ind.fitness.values = 1.0, f2,
-            if a == 2:
-                ind.fitness.values = f1, 1.0,
-            if a == 3:
-                ind.fitness.values = 1.0, 1.0,
-            else:
-                ind.fitness.values = f1, f2,
+            ind.fitness.values = f1, f2,
     return pop
 
 def decode_hof(hof):
@@ -281,8 +271,7 @@ def main():
     paretof = tools.ParetoFront()
 
     # 進化のサイクルを回す
-    for g in tqdm(range(1, N_GEN + 1)):
-    # for g in range(1, N_GEN + 1):
+    for g in range(1, N_GEN + 1):
         # 子の世代の選択と複製
         offspring = tools.selTournamentDCD(pop, len(pop))
         offspring = list(map(toolbox.clone, offspring))
@@ -318,5 +307,5 @@ if __name__ == "__main__":
     
     # パレートフロントを出力
     df_hof = decode_hof(paretof)
-    df_hof.drop_duplicates(keep='first', subset=['query', 'payment'], inplace=True)
+    df_hof.drop_duplicates(keep='first', subset=['query', 'payment'])
     df_hof.to_csv(OUT_DIR + EID + '.csv')

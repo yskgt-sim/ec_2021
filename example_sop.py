@@ -15,17 +15,16 @@
 # メモリとCPUコア数とを確認されてから設定してください．
 # 
 # ### 動作環境
-# ライブラリのバージョンに依存することはなさそうですが，以下の環境では動作しています．
+# 以下の環境で動作確認をしています．
 # 外部のライブラリとしては[DEAP](https://github.com/deap/deap)を使っています．
-# 動作の確認を行っている環境は以下です．
 # - on macOS Big Sur 11.1
 # - deap: 1.3.1
 # - multiprocess: 0.70.12.2
 # - numpy: 1.20.2
 # - pandas: 1.2.4
 # - python: 3.9.2
+# subprocessの処理でエラーが出る際には，pythonのバージョンを3.7以上に上げることを試してみてください．
 import math
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import random
@@ -41,13 +40,15 @@ from deap import tools
 # - FID: 目的関数のID．F_1では "[1]" F_2では "[2]" のように指定してください．
 # - CITY: 実行する都市名． naha：沖縄県那覇市，hakodate: 北海道函館市．　
 # - SEEDS: 実行時の乱数シードのリスト．""で囲って定義してください．
-N_PROC = 10
+# - OS: 実行ファイルの振り分け用のフラグ． 1: Widows, 2: Linux, MacOS
+N_PROC = 5
 OUT_DIR = "./"
 EID = "p002"
 FID = "[2]"
 CITY = "hakodate"
 # 単目的部門では， FID "[1]" CITY "naha"　， FID "[2]" CITY "hakodate" の2通りの指定を行えばよいです．
 SEEDS = "[123,42,256]"
+OS = 2
 
 ### GAの設定
 # - SEED：GAの遺伝的操作の際の乱数シード．シミュレーションにわたす乱数シードとは異なる点に注意．
@@ -130,13 +131,17 @@ def ret_fitness(p):
     #   解の金額面の余裕（マイナスの場合には制約を満たしていない）
     
     a, err = p.communicate(timeout=1_000)
-    # 正常に子プロセスが終了しないときは，目的関数値を0にしておく -> 次は選ばれないように
+    # 正常に子プロセスが終了しないときは，目的関数値を1_000にしておく -> 次は選ばれないように
     if p.returncode != 0:
         print("sim failed %d %s %s" % (p.returncode, a, err))
-        return 0.0, [1.0], False, [0]
+        return 1_000, [1_000], False, [0]
     else:
         a_split = eval(a)
-        return float(a_split[0]), a_split[1], a_split[2], a_split[3]
+        # 実行
+        if a_split[0] == None:
+            return 1_000, a_split[1], a_split[2], a_split[3]
+        else:
+            return float(a_split[0]), a_split[1], a_split[2], a_split[3]
 
 def evaluation(pop):
     ### 個体の評価を行う関数
@@ -174,7 +179,11 @@ def evaluation(pop):
         for i in ind_list:
             ind = pop[i]
             q, pay = gene2pay(ind)
-            cmd = """python syn_pop.py \"""" + str(q) + """\" """ + str(pay) + """ """ + str(FID) + """ """ + str(CITY) + """ """ + str(SEEDS)
+            cmd = ''
+            if OS == 1:
+                cmd = """syn_pop.exe \"""" + str(q) + """\" """ + str(pay) + """ """ + str(FID) + """ """ + str(CITY) + """ """ + str(SEEDS)
+            else:
+                cmd = """./syn_pop \"""" + str(q) + """\" """ + str(pay) + """ """ + str(FID) + """ """ + str(CITY) + """ """ + str(SEEDS)
             job_list.append(cmd)
         procs = [subprocess.Popen(job, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for job in job_list]
 
@@ -192,7 +201,7 @@ def evaluation(pop):
         # 目的関数値を各個体に割り当てていく．
         # このときに，解が金額の制約以外で，実行可能でないときには，ペナルティとして，目的関数値を0.0とする
         if j == False:
-            ind.fitness.values = 0.0,
+            ind.fitness.values = 1_000,
         else:
             ind.fitness.values = f, 
 
@@ -239,8 +248,8 @@ def main():
     # 交叉：一様交叉
     # 突然変異：ビット反転
     # 選択：トーナメント選択
-    creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-    creator.create("Individual", list, fitness=creator.FitnessMax)
+    creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+    creator.create("Individual", list, fitness=creator.FitnessMin)
     toolbox = base.Toolbox()
 
     # 初期の個体は支給対象の定義においては制約を満たす個体で始める（なお，金額面は満たすとは限らない）
@@ -307,7 +316,7 @@ def main():
         
     
     # 次回の実行のため，削除しておく
-    del creator.FitnessMax
+    del creator.FitnessMin
     del creator.Individual
     
     return logbook, hof
@@ -318,5 +327,5 @@ if __name__ == "__main__":
     
     # 最良個体の出力
     df_hof_final = decode_hof(hof)
-    df_hof_final.drop_duplicates(keep='first', subset=['query', 'payment'], inplace=True)
+    df_hof_final.drop_duplicates(keep='first', subset=['query', 'payment'])
     df_hof_final.to_csv(OUT_DIR + EID + '_p.csv')
