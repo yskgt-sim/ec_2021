@@ -96,8 +96,8 @@ $ python Windows/syn_pop.py [query] [payment] [function id] [city] [seeds]
 ```
 のリストが返されます．各条件で実行した生の$F_{1 or 2}$値は，都市セットid(`city`) -> シナリオid(`scenario`) -> `rn`の順番の組合せで，
 ```python
-city = [1,2,3]
-scenario = [opt, mid, psm]
+city = [1, 2, 3]
+scenario = ["opt", "mid", "psm"]
 rn = [123, 42, 256]
 
 for p in city:
