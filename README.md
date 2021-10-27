@@ -23,7 +23,7 @@ example_sop.py
 requirements.txt
 ```
 
-dataディレクトリには次のファイルが配置されていることを確認してください．
+`data`ディレクトリには次のファイルが配置されていることを確認してください．
 ```
 $ ls data
  hakodate_01.pkl
