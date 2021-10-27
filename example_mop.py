@@ -26,11 +26,11 @@
 # - pandas: 1.2.4
 # - python: 3.9.2
 # subprocessの処理でエラーが出る際には，pythonのバージョンを3.7以上に上げることを試してみてください．
-import math
-import numpy as np
-import pandas as pd
+import platform
 import random
 import subprocess
+
+import pandas as pd
 from deap import base
 from deap import creator
 from deap import tools
@@ -42,13 +42,11 @@ from deap.benchmarks.tools import hypervolume
 # EID: パレートフロントのcsvの拡張子の前の部分． "p001" とすると，p001.csv として保存します．
 # CITY: 実行する都市名． naha：沖縄県那覇市，hakodate: 北海道函館市
 # SEEDS: 実行時の乱数シードのリスト．""で囲って定義してください．
-# OS: 実行ファイルの振り分け用のフラグ． 1: Widows, 2: Linux, MacOS
 N_PROC = 5
 OUT_DIR = "./"
 EID = "p001"
 CITY = "naha"
 SEEDS = "[123,42,256]"
-OS = 2
 
 ### GAの設定
 # SEED：GAの遺伝的操作の際の乱数シード．シミュレーションにわたす乱数シードとは異なる点に注意．
@@ -71,6 +69,10 @@ P_MUTATION = 0.025
 ### Hypervolume計算用
 # REF_P: 参照点の座標
 REF_P = [-0.1, -0.1]
+
+# シミュレータのパス
+SIM_PATH = platform.system() + "/syn_pop.py"
+
 
 def gene2pay(gene): 
     ### コーディングした遺伝子から，設計変数へと変換する関数
@@ -172,13 +174,9 @@ def evaluation(pop):
         for i in ind_list:
             ind = pop[i]
             q, pay = gene2pay(ind)
-            cmd = ''
-            if OS == 1:
-                cmd = """syn_pop.exe \"""" + str(q) + """\" """ + str(pay) + """ """ + "[1,2]" + """ """ + str(CITY) + """ """ + str(SEEDS)
-            else:
-                cmd = """./syn_pop \"""" + str(q) + """\" """ + str(pay) + """ """ + "[1,2]" + """ """ + str(CITY) + """ """ + str(SEEDS)
+            cmd = ["python", SIM_PATH, str(q), str(pay), "[1,2]", str(CITY), str(SEEDS)]
             job_list.append(cmd)
-        procs = [subprocess.Popen(job, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for job in job_list]
+        procs = [subprocess.Popen(job, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for job in job_list]
 
         for i in range(len(ind_list)):
             # avg: 目的関数値
