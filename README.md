@@ -35,7 +35,8 @@ $ ls data
  scenario.csv
 ```
 
-Python 3.6以上がインストールされているものとします．
+シミュレーション・プログラムは**Python 3.9でのみ**動作します（Python 2.7やPython 3.8以下では動きません）．
+Python 3.9をインストールしてください．
 ```
 $ python --version
 3.9.3
